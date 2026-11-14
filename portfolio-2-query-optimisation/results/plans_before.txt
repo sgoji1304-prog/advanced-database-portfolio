@@ -1,0 +1,160 @@
+=================== Q1: member loan history ===================
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Merge  (cost=4073.62..4078.18 rows=40 width=31) (actual time=128.594..455.993 rows=40.00 loops=1)
+   Workers Planned: 1
+   Workers Launched: 1
+   Buffers: shared hit=1720
+   ->  Sort  (cost=3073.61..3073.67 rows=24 width=31) (actual time=11.951..11.955 rows=20.00 loops=2)
+         Sort Key: l.loan_date DESC
+         Sort Method: quicksort  Memory: 26kB
+         Buffers: shared hit=1720
+         Worker 0:  Sort Method: quicksort  Memory: 25kB
+         ->  Nested Loop  (cost=0.56..3073.06 rows=24 width=31) (actual time=0.524..11.881 rows=20.00 loops=2)
+               Buffers: shared hit=1712
+               ->  Nested Loop  (cost=0.28..3065.58 rows=24 width=20) (actual time=0.507..11.792 rows=20.00 loops=2)
+                     Buffers: shared hit=1592
+                     ->  Parallel Seq Scan on loans l  (cost=0.00..2943.18 rows=24 width=20) (actual time=0.478..11.643 rows=20.00 loops=2)
+                           Filter: (member_id = 1234)
+                           Rows Removed by Filter: 100020
+                           Buffers: shared hit=1472
+                     ->  Index Scan using book_copies_pkey on book_copies c  (cost=0.28..5.10 rows=1 width=8) (actual time=0.006..0.006 rows=1.00 loops=40)
+                           Index Cond: (copy_id = l.copy_id)
+                           Index Searches: 40
+                           Buffers: shared hit=120
+               ->  Index Scan using books_pkey on books b  (cost=0.28..0.31 rows=1 width=19) (actual time=0.004..0.004 rows=1.00 loops=40)
+                     Index Cond: (book_id = c.book_id)
+                     Index Searches: 40
+                     Buffers: shared hit=120
+ Planning:
+   Buffers: shared hit=315
+ Planning Time: 7.926 ms
+ Execution Time: 456.142 ms
+(29 rows)
+
+=================== Q2: overdue loans ===================
+                                                                           QUERY PLAN                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=693.63..693.86 rows=93 width=60) (actual time=3.964..3.967 rows=30.00 loops=1)
+   Sort Key: ((CURRENT_DATE - l.due_date)) DESC
+   Sort Method: quicksort  Memory: 27kB
+   Buffers: shared hit=203
+   ->  Nested Loop  (cost=363.41..690.59 rows=93 width=60) (actual time=3.853..3.925 rows=30.00 loops=1)
+         Buffers: shared hit=200
+         ->  Hash Join  (cost=363.13..661.14 rows=93 width=49) (actual time=3.822..3.850 rows=30.00 loops=1)
+               Hash Cond: (l.copy_id = c.copy_id)
+               Buffers: shared hit=110
+               ->  Hash Join  (cost=183.13..480.89 rows=93 width=49) (actual time=2.076..2.095 rows=30.00 loops=1)
+                     Hash Cond: (l.member_id = m.member_id)
+                     Buffers: shared hit=65
+                     ->  Bitmap Heap Scan on loans l  (cost=8.63..306.15 rows=93 width=16) (actual time=0.062..0.070 rows=30.00 loops=1)
+                           Recheck Cond: (return_date IS NULL)
+                           Filter: (due_date < CURRENT_DATE)
+                           Rows Removed by Filter: 50
+                           Heap Blocks: exact=2
+                           Buffers: shared hit=3
+                           ->  Bitmap Index Scan on uq_one_active_loan_per_copy  (cost=0.00..8.61 rows=93 width=0) (actual time=0.026..0.026 rows=80.00 loops=1)
+                                 Index Searches: 1
+                                 Buffers: shared hit=1
+                     ->  Hash  (cost=112.00..112.00 rows=5000 width=41) (actual time=1.875..1.875 rows=5000.00 loops=1)
+                           Buckets: 8192  Batches: 1  Memory Usage: 435kB
+                           Buffers: shared hit=62
+                           ->  Seq Scan on members m  (cost=0.00..112.00 rows=5000 width=41) (actual time=0.018..0.864 rows=5000.00 loops=1)
+                                 Buffers: shared hit=62
+               ->  Hash  (cost=105.00..105.00 rows=6000 width=8) (actual time=1.702..1.702 rows=6000.00 loops=1)
+                     Buckets: 8192  Batches: 1  Memory Usage: 299kB
+                     Buffers: shared hit=45
+                     ->  Seq Scan on book_copies c  (cost=0.00..105.00 rows=6000 width=8) (actual time=0.026..0.807 rows=6000.00 loops=1)
+                           Buffers: shared hit=45
+         ->  Index Scan using books_pkey on books b  (cost=0.28..0.31 rows=1 width=19) (actual time=0.002..0.002 rows=1.00 loops=30)
+               Index Cond: (book_id = c.book_id)
+               Index Searches: 30
+               Buffers: shared hit=90
+ Planning:
+   Buffers: shared hit=63
+ Planning Time: 3.351 ms
+ Execution Time: 4.204 ms
+(39 rows)
+
+=================== Q3: top 10 most borrowed ===================
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=5538.40..5538.43 rows=10 width=27) (actual time=248.171..253.325 rows=10.00 loops=1)
+   Buffers: shared hit=1599
+   ->  Sort  (cost=5538.40..5543.40 rows=2000 width=27) (actual time=248.167..253.319 rows=10.00 loops=1)
+         Sort Key: (count(*)) DESC
+         Sort Method: top-N heapsort  Memory: 25kB
+         Buffers: shared hit=1599
+         ->  Finalize HashAggregate  (cost=5475.18..5495.18 rows=2000 width=27) (actual time=247.214..252.833 rows=2000.00 loops=1)
+               Group Key: b.book_id
+               Batches: 1  Memory Usage: 217kB
+               Buffers: shared hit=1596
+               ->  Gather  (cost=5098.18..5458.18 rows=3400 width=27) (actual time=244.864..251.363 rows=4000.00 loops=1)
+                     Workers Planned: 1
+                     Workers Launched: 1
+                     Buffers: shared hit=1596
+                     ->  Partial HashAggregate  (cost=4098.18..4118.18 rows=2000 width=27) (actual time=161.132..161.662 rows=2000.00 loops=2)
+                           Group Key: b.book_id
+                           Batches: 1  Memory Usage: 217kB
+                           Buffers: shared hit=1596
+                           Worker 0:  Batches: 1  Memory Usage: 217kB
+                           ->  Hash Join  (cost=242.00..3509.71 rows=117694 width=19) (actual time=6.101..123.415 rows=100040.00 loops=2)
+                                 Hash Cond: (c.book_id = b.book_id)
+                                 Buffers: shared hit=1596
+                                 ->  Hash Join  (cost=180.00..3138.11 rows=117694 width=4) (actual time=4.238..67.666 rows=100040.00 loops=2)
+                                       Hash Cond: (l.copy_id = c.copy_id)
+                                       Buffers: shared hit=1562
+                                       ->  Parallel Seq Scan on loans l  (cost=0.00..2648.94 rows=117694 width=4) (actual time=0.015..10.688 rows=100040.00 loops=2)
+                                             Buffers: shared hit=1472
+                                       ->  Hash  (cost=105.00..105.00 rows=6000 width=8) (actual time=4.155..4.156 rows=6000.00 loops=2)
+                                             Buckets: 8192  Batches: 1  Memory Usage: 299kB
+                                             Buffers: shared hit=90
+                                             ->  Seq Scan on book_copies c  (cost=0.00..105.00 rows=6000 width=8) (actual time=0.316..1.932 rows=6000.00 loops=2)
+                                                   Buffers: shared hit=90
+                                 ->  Hash  (cost=37.00..37.00 rows=2000 width=19) (actual time=1.839..1.839 rows=2000.00 loops=2)
+                                       Buckets: 2048  Batches: 1  Memory Usage: 117kB
+                                       Buffers: shared hit=34
+                                       ->  Seq Scan on books b  (cost=0.00..37.00 rows=2000 width=19) (actual time=0.314..0.979 rows=2000.00 loops=2)
+                                             Buffers: shared hit=34
+ Planning:
+   Buffers: shared hit=29
+ Planning Time: 0.841 ms
+ Execution Time: 253.758 ms
+(41 rows)
+
+=================== Q4: fines per day (one week) ===================
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=2532.54..2532.61 rows=28 width=44) (actual time=18.157..18.157 rows=1.00 loops=1)
+   Sort Key: assessed_date
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=510
+   ->  HashAggregate  (cost=2531.52..2531.87 rows=28 width=44) (actual time=18.149..18.150 rows=1.00 loops=1)
+         Group Key: assessed_date
+         Batches: 1  Memory Usage: 32kB
+         Buffers: shared hit=510
+         ->  Seq Scan on fines  (cost=0.00..2510.00 rows=2869 width=9) (actual time=0.039..16.974 rows=2860.00 loops=1)
+               Filter: ((assessed_date >= (CURRENT_DATE - 60)) AND (assessed_date <= (CURRENT_DATE - 54)))
+               Rows Removed by Filter: 77140
+               Buffers: shared hit=510
+ Planning:
+   Buffers: shared hit=51
+ Planning Time: 1.750 ms
+ Execution Time: 18.227 ms
+(16 rows)
+
+=================== Q5: loans issued on one day ===================
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..4560.15 rows=285 width=16) (actual time=0.344..306.435 rows=286.00 loops=1)
+   Workers Planned: 1
+   Workers Launched: 1
+   Buffers: shared hit=1472
+   ->  Parallel Seq Scan on loans l  (cost=0.00..3531.65 rows=168 width=16) (actual time=0.009..13.660 rows=143.00 loops=2)
+         Filter: (loan_date = (CURRENT_DATE - 100))
+         Rows Removed by Filter: 99897
+         Buffers: shared hit=1472
+ Planning Time: 0.113 ms
+ Execution Time: 306.621 ms
+(10 rows)
+
