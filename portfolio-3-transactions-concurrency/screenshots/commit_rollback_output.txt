@@ -1,0 +1,130 @@
+
+#### Setup: reset copies 500 and 600 and remove test loans from earlier runs
+
+#### 1. COMMIT: a successful borrow is saved permanently
++-------------+
+| new_loan_id |
++-------------+
+|      200083 |
++-------------+
+(1 row)
+
+Inside the transaction we can see the loan and the copy status:
++---------+---------+-----------+------------+-------------+
+| loan_id | copy_id | member_id |  due_date  | copy_status |
++---------+---------+-----------+------------+-------------+
+|  200083 |     500 |         2 | 2026-11-28 | on_loan     |
++---------+---------+-----------+------------+-------------+
+(1 row)
+
+After COMMIT (visible to every other session):
++---------+---------+
+| copy_id | status  |
++---------+---------+
+|     500 | on_loan |
++---------+---------+
+(1 row)
+
+
+#### 2. ROLLBACK: an explicit rollback undoes everything
+Inside the transaction the copy looks lost:
++---------+--------+
+| copy_id | status |
++---------+--------+
+|     600 | lost   |
++---------+--------+
+(1 row)
+
+After ROLLBACK the change never happened:
++---------+-----------+
+| copy_id |  status   |
++---------+-----------+
+|     600 | available |
++---------+-----------+
+(1 row)
+
+
+#### 3. ATOMICITY: when one statement fails, earlier ones are undone too
+Step A marks copy 600 on_loan (succeeds). Step B tries to lend copy 500,
+which is already on loan (violates the one-active-loan rule and FAILS).
+psql:02_commit_rollback.sql:48: ERROR:  duplicate key value violates unique constraint "uq_one_active_loan_per_copy"
+DETAIL:  Key (copy_id)=(500) already exists.
+psql:02_commit_rollback.sql:50: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+Copy 600 is STILL available, because step A was rolled back with step B:
++---------+-----------+
+| copy_id |  status   |
++---------+-----------+
+|     600 | available |
++---------+-----------+
+(1 row)
+
+
+#### 4. Business rule failure inside a function rolls back automatically
+psql:02_commit_rollback.sql:58: ERROR:  Copy 500 is not available (status: on_loan)
+CONTEXT:  PL/pgSQL function borrow_book(integer,integer,integer) line 15 at RAISE
+No second loan was created for copy 500 (expect exactly 1 open loan):
++------------------------+
+| open_loans_on_copy_500 |
++------------------------+
+|                      1 |
++------------------------+
+(1 row)
+
+
+#### 5. SAVEPOINT: roll back only part of a transaction
++-------------------+
+| loan_for_copy_600 |
++-------------------+
+|            200085 |
++-------------------+
+(1 row)
+
+psql:02_commit_rollback.sql:68: ERROR:  Copy 500 is not available (status: on_loan)
+CONTEXT:  PL/pgSQL function borrow_book(integer,integer,integer) line 15 at RAISE
+The first loan (copy 600) is still alive inside the transaction:
++---------+---------+
+| copy_id | status  |
++---------+---------+
+|     600 | on_loan |
++---------+---------+
+(1 row)
+
++---------+---------+
+| copy_id | status  |
++---------+---------+
+|     500 | on_loan |
+|     600 | on_loan |
++---------+---------+
+(2 rows)
+
+
+#### 6. return_book: on-time return, then a late return with a fine
++-------------------+
+| fine_for_copy_600 |
++-------------------+
+|                 0 |
++-------------------+
+(1 row)
+
++-------------------+
+| fine_for_copy_500 |
++-------------------+
+|            500.00 |
++-------------------+
+(1 row)
+
++---------+---------+--------+------+
+| fine_id | loan_id | amount | paid |
++---------+---------+--------+------+
+|   80001 |  200083 | 500.00 | f    |
++---------+---------+--------+------+
+(1 row)
+
++---------+-----------+
+| copy_id |  status   |
++---------+-----------+
+|     500 | available |
+|     600 | available |
++---------+-----------+
+(2 rows)
+
