@@ -1,0 +1,230 @@
+
+=== Q1. Exact lookup by ISBN (one document replaces a 4-table join) ===
+{
+  _id: 42,
+  isbn: '9780000000042',
+  title: 'Book Title 42',
+  publication_year: 2022,
+  category: 'Technology',
+  authors: [
+    {
+      author_id: 43,
+      name: 'Author 43'
+    }
+  ],
+  copies: [
+    {
+      copy_id: 41,
+      barcode: 'BC000041',
+      status: 'on_loan'
+    },
+    {
+      copy_id: 2041,
+      barcode: 'BC002041',
+      status: 'available'
+    },
+    {
+      copy_id: 4041,
+      barcode: 'BC004041',
+      status: 'available'
+    }
+  ],
+  format: 'print',
+  attributes: {
+    pages: 454,
+    language: 'English',
+    hardcover: true
+  },
+  tags: [
+    'bestseller',
+    'staff-pick'
+  ],
+  reviews: [
+    {
+      member_id: 1320,
+      rating: 1,
+      comment: 'Review 1 of book 42',
+      date: ISODate('2026-10-03T22:43:58.259Z')
+    },
+    {
+      member_id: 1337,
+      rating: 4,
+      comment: 'Review 2 of book 42',
+      date: ISODate('2026-08-22T22:43:58.259Z')
+    },
+    {
+      member_id: 1354,
+      rating: 2,
+      comment: 'Review 3 of book 42',
+      date: ISODate('2026-07-11T22:43:58.259Z')
+    }
+  ]
+}
+
+=== Q2. Full-text search on title ===
+[
+  {
+    isbn: '9780000001234',
+    title: 'Book Title 1234'
+  },
+  {
+    isbn: '9780000002000',
+    title: 'Book Title 2000'
+  },
+  {
+    isbn: '9780000001999',
+    title: 'Book Title 1999'
+  },
+  {
+    isbn: '9780000001998',
+    title: 'Book Title 1998'
+  },
+  {
+    isbn: '9780000001997',
+    title: 'Book Title 1997'
+  }
+]
+
+=== Q3. Array query: bestsellers in Fiction ===
+[
+  {
+    _id: 24,
+    title: 'Book Title 24',
+    tags: [
+      'bestseller',
+      'staff-pick'
+    ]
+  },
+  {
+    _id: 48,
+    title: 'Book Title 48',
+    tags: [
+      'bestseller',
+      'staff-pick'
+    ]
+  },
+  {
+    _id: 72,
+    title: 'Book Title 72',
+    tags: [
+      'bestseller',
+      'staff-pick'
+    ]
+  },
+  {
+    _id: 96,
+    title: 'Book Title 96',
+    tags: [
+      'bestseller',
+      'staff-pick'
+    ]
+  },
+  {
+    _id: 120,
+    title: 'Book Title 120',
+    tags: [
+      'bestseller',
+      'staff-pick'
+    ]
+  }
+]
+
+=== Q4. Format-specific attribute: audiobooks longer than 10 hours ===
+[
+  {
+    _id: 29,
+    title: 'Book Title 29',
+    attributes: {
+      duration_minutes: 613
+    }
+  },
+  {
+    _id: 32,
+    title: 'Book Title 32',
+    attributes: {
+      duration_minutes: 664
+    }
+  },
+  {
+    _id: 35,
+    title: 'Book Title 35',
+    attributes: {
+      duration_minutes: 715
+    }
+  },
+  {
+    _id: 38,
+    title: 'Book Title 38',
+    attributes: {
+      duration_minutes: 766
+    }
+  },
+  {
+    _id: 41,
+    title: 'Book Title 41',
+    attributes: {
+      duration_minutes: 817
+    }
+  }
+]
+
+=== Q5. Books that currently have an available copy (embedded array match) ===
+Count: 2000
+
+=== Q6. Aggregation: average rating and review count per category ===
+[
+  {
+    reviews: 500,
+    category: 'Children',
+    avgRating: 3
+  },
+  {
+    reviews: 750,
+    category: 'Technology',
+    avgRating: 3
+  },
+  {
+    reviews: 500,
+    category: 'Science',
+    avgRating: 3
+  },
+  {
+    reviews: 1000,
+    category: 'History',
+    avgRating: 3
+  },
+  {
+    reviews: 750,
+    category: 'Law',
+    avgRating: 3
+  },
+  {
+    reviews: 1000,
+    category: 'Business',
+    avgRating: 3
+  }
+]
+
+=== Q7. Aggregation: copies by status across the whole catalogue ===
+[
+  {
+    _id: 'available',
+    copies: 5920
+  },
+  {
+    _id: 'on_loan',
+    copies: 80
+  }
+]
+
+=== Q8. Atomic single-document update: borrow one copy ===
+Borrowing copy BC002000 of book 1
+First attempt  modifiedCount = 1   (expected 1)
+Second attempt modifiedCount = 0   (expected 0, copy no longer available)
+
+=== Q9. Index evidence: BEFORE vs AFTER for the Fiction + bestseller query ===
+Without index: {"plan":"COLLSCAN","docsExamined":2000,"keysExamined":0,"returned":83,"ms":12}
+With index   : {"plan":"FETCH <- IXSCAN(category_1_tags_1)","docsExamined":83,"keysExamined":83,"returned":83,"ms":7}
+
+ISBN lookup plan (unique index): {"plan":"EXPRESS_IXSCAN(isbn_1)","docsExamined":1,"keysExamined":1,"returned":1,"ms":1}
+Unindexed field (publication_year) plan: {"plan":"COLLSCAN","docsExamined":2000,"keysExamined":0,"returned":45,"ms":1}
