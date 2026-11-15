@@ -29,13 +29,9 @@ PGUSER=postgres ./02_replication_postgres.sh            # builds the replica and
 ./03_mongo_replicaset.sh cleanup
 ```
 
-Settings you may need to change are listed at the top of each script (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PRIMARY_PORT`, `REPLICA_PORT`, `DB`). The replica needs a PostgreSQL role that may take a base backup, and the default superuser works. Take **screenshots of each step's output** and save them in `screenshots/`.
-
-If you are on **Windows without WSL**, parts B and C cannot run as written. Do part A, which works everywhere, and cover replication through `ARCHITECTURE.md`, stating that clearly in your documentation.
-
 ## 3. Expected results
 
-| Exercise | What you should see |
+| Exercise 
 |---|---|
 | A1 | Loans spread across about 9 quarterly partitions |
 | A2 | `Subplans Removed: 12`: only the one partition matching the date range is scanned (**partition pruning**) |
@@ -53,14 +49,7 @@ If you are on **Windows without WSL**, parts B and C cannot run as written. Do p
 | Mongo 5-6 | Document visible on the secondary, write to the secondary refused |
 | Mongo failover | A different member becomes `PRIMARY` and writes continue |
 
-## 4. Key concepts to explain in your own words
 
-- **Replication vs sharding:** replication copies the *same* data to several servers (availability, read scaling), while sharding splits *different* data across servers (write and storage scaling). Production systems use both.
-- **Shard key choice:** it decides which queries are cheap (targeted) and which are expensive (scatter-gather). Explain why `member_id` was used for loans.
-- **Consistency vs availability:** loans need strong consistency, while reports and the catalogue can tolerate stale reads (`ARCHITECTURE.md`, section 4).
-- **Asynchronous replication risk:** a primary crash can lose the last commits that had not yet reached the replica, and synchronous replication removes that risk at a latency cost.
-- **Failover:** a replica is promoted (PostgreSQL) or elected (MongoDB). Mention split-brain and why a majority is needed.
 
-## 5. Technical Reflection (draft, rewrite in your own words)
-
-*Add 3-5 sentences on what the scatter-gather query taught you about shard keys, what you observed about replication lag, and which parts of the design you could demonstrate locally versus only discuss (the cloud deployment).*
+## 4. Technical Reflection 
+Replication copies the same data to several servers, while sharding splits different data across servers. I demonstrated replication with PostgreSQL streaming replication and a MongoDB replica set, and sharding with the four loans_shard tables in PostgreSQL. The partitioning results showed me that the partition key matters: a filter on the partition key (loan_date) let PostgreSQL scan only the one partition it needed and remove the rest, while a filter on member_id had to scan every partition. I used member_id as the shard key because loans are usually searched by the member who borrowed them, so those queries read just one shard. A query without the shard key, such as a filter on loan_date, is scatter-gather and must check all four shards, which adds work and response time. The even spread (about 24% to 26% per shard) matters because it stops one shard from carrying too much of the workload. Zero replication lag showed that the replica was fully caught up at the time of testing, and the refused INSERT showed that a replica is read-only. On a busy system lag can grow when the primary produces changes faster than the replica can receive and apply them. In PostgreSQL I promoted the replica by hand, while the MongoDB replica set elected a new primary automatically after the old one stepped down, and a majority of members is required so that two members cannot both become primary (split-brain). Because the replication was asynchronous, recent commits might not have reached the replica before a crash and could be lost during failover. Synchronous replication reduces that risk by making the primary wait for the replica, but it adds delay to each transaction. I could demonstrate partitioning, sharding, PostgreSQL replication and failover, and the MongoDB replica set on my own machine. The cloud deployment in ARCHITECTURE.md was only discussed as a proposed design and not deployed. On Windows, the MongoDB script needed a small edit, replacing --fork with nohup ... &, to run.

@@ -29,7 +29,7 @@ chmod +x *.sh
 
 The `.sh` scripts need a Bash shell (Git Bash or WSL on Windows). Set `PGHOST`, `PGUSER` and `PGPASSWORD` if your connection needs them, and `DB=yourdbname` if it is not `citylib`. Each script opens **two** psql sessions at once and uses `pg_sleep` to force the exact interleaving, so the problem is reproducible every time.
 
-**Screenshot each command's output** as evidence and save them in `screenshots/`.
+
 
 ## 3. Commit, rollback and atomicity (`02_commit_rollback.sql`)
 
@@ -72,13 +72,12 @@ Fine #1 is 500. Staff A waives 100. Staff B adds a 50 surcharge. **Correct final
 
 A locks copy 701 then wants 702, while B locks 702 then wants 701. PostgreSQL reports `deadlock detected`, aborts one session and lets the other commit. **Prevention:** always lock rows in a consistent order (for example ascending `copy_id`) and keep transactions short.
 
-## 5. ACID summary (write this in your own words)
+## 5. ACID summary
 
-- **Atomicity:** demos 3, 4, 5.
-- **Consistency:** CHECK, FOREIGN KEY and the partial unique index reject invalid states, so a transaction cannot leave the database in a broken state.
-- **Isolation:** the lost-update and isolation-level demos.
-- **Durability:** once COMMIT returns, the change survives a crash because PostgreSQL writes it to the write-ahead log first.
+Atomicity: In the commit and rollback tests, a transaction either completed fully or all its changes were undone.
+Consistency: The database constraints stopped transactions from leaving the data in an invalid state.
+Isolation: The concurrent session tests showed how PostgreSQL controls the way transactions interact, so conflicting changes do not overwrite each other. Under READ COMMITTED the second read showed the newly committed value, while under REPEATABLE READ it showed the original value because the transaction kept the same snapshot.
+Durability: The COMMIT demonstration showed that successfully committed changes stay saved in the database.
 
 ## 6. Technical Reflection (draft, rewrite in your own words)
-
-*Add 3-5 sentences about which fix you would choose in production for the lost update and why (for example, the atomic update is simplest and fastest, `FOR UPDATE` suits multi-step logic, REPEATABLE READ needs retry logic), and what surprised you when you ran the unsafe version.*
+In the unsafe lost update run, both sessions read the same starting value and changed it independently, so one session overwrote the other and the final value was wrong (550). The other three runs fixed this by using row locking, an atomic update, or transaction isolation, so conflicting changes could not silently overwrite each other. The isolation demos showed how the isolation level changes what a transaction can see: READ COMMITTED showed the updated value on the second read, while REPEATABLE READ kept the original snapshot. In the deadlock demo, two sessions locked different records and then each tried to reach a record the other held. PostgreSQL detected the deadlock and cancelled one transaction so the other could continue, and an application can reduce deadlocks by accessing records in a consistent order and keeping transactions short. The commit and rollback demos showed the all-or-nothing behaviour of transactions: committed changes are saved permanently, and rolled-back changes are undone, so the database can return to a consistent state if something goes wrong halfway. This matters for a library because, without locking, two staff members could lend the same copy at the same moment, both transactions could succeed, and the records would no longer show which books are really available.

@@ -72,13 +72,11 @@ One `books` collection. Each document holds everything usually read together:
 
 Indexes created: unique on `isbn`, compound `category + tags` (multikey because `tags` is an array), `text` on `title`, and `copies.status`.
 
-## 5. Why a document database suits this part of the case study (explain in your own words)
+## 5. Why a document database suits this part of the case study 
 
-**Good fit (the catalogue):**
-- **Read together, stored together.** A catalogue page shows title, authors, copies and reviews at once, so one document read replaces several joins.
-- **Variable structure.** Print books, ebooks and audiobooks have different attributes. A document absorbs this without a wide table full of NULLs or one table per format.
-- **Arrays are first-class.** Tags, authors and reviews are naturally lists.
-- **Horizontal scale.** Documents are self-contained, which makes sharding by `_id` or `category` straightforward (see Portfolio 5).
+Redis (key-value): could store frequently accessed catalogue information or session data.
+Cassandra (column-family): could handle large volumes of library activity logs.
+Neo4j (graph): could show relationships between books, authors, genres and readers.
 
 **Poor fit (loans, fines, members):**
 - These are transactional records with strict rules (a copy has one active loan, fines must match returns). They need multi-row ACID transactions, foreign keys and constraints, which PostgreSQL provides more naturally.
@@ -97,10 +95,10 @@ Indexes created: unique on `isbn`, compound `category + tags` (multikey because 
 | Model | Possible use at CityLib | Chosen? |
 |---|---|---|
 | Document (MongoDB) | Catalogue with flexible attributes, reviews | **Yes** |
-| Key-value (Redis) | Cache "is copy X available?" or session tokens for the catalogue site | Discussed only |
-| Column-family (Cassandra) | Very high-volume event or log streams (for example every catalogue search) | Discussed only |
-| Graph (Neo4j) | "Readers who borrowed this also borrowed..." recommendations | Discussed only |
+| Key-value (Redis) | Cache "is copy X available?" or session tokens for the catalogue site 
+| Column-family (Cassandra) | Very high-volume event or log streams (for example every catalogue search)
+| Graph (Neo4j) | "Readers who borrowed this also borrowed..." recommendations 
 
-## 6. Technical Reflection (draft, rewrite in your own words)
+## 6. Technical Reflection 
 
-*Add 3-5 sentences on what you chose to embed and why, which part of the system you deliberately left in PostgreSQL, and what the COLLSCAN to IXSCAN change taught you.*
+I embedded authors, copies, attributes, tags and reviews inside each book document because they are usually needed together when a book’s information is displayed, so one read replaces the multiple joins PostgreSQL would need. I deliberately left members, loans, fines and staff in PostgreSQL because they depend on strict relationships, foreign keys and reliable transactions, which a relational database manages more easily. The flexible attributes field showed that documents in the same collection can have different fields: print books carry pages and language, while ebooks and audiobooks carry their own details, without every document sharing one fixed structure. Q8 showed an atomic update in action: the first borrow attempt modified one document, and the second modified none because the copy was no longer available, so the same copy could not be borrowed twice. The change from COLLSCAN to IXSCAN showed me that an index lets MongoDB find records without examining every document: it examined 2,000 documents without the index and only 83 with it, which is the same idea I saw with PostgreSQL in Portfolio 2. One downside of the document model is repetition, since author or category names are copied into many documents, so a change means updating several of them to keep everything consistent.

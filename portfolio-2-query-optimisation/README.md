@@ -21,7 +21,7 @@ psql -d citylib -f indexes.sql                                 # optimise
 psql -d citylib -f explain.sql > results/plans_after.txt      # re-measure
 ```
 
-Run `explain.sql` twice before indexing and use the second result, so caches are warm and the comparison is fair. Screenshot the "before" and "after" plan for Q1 at minimum, and keep the full text files in `results/`.
+
 
 ## 3. The queries
 
@@ -43,31 +43,22 @@ Run `explain.sql` twice before indexing and use the second result, so caches are
 | Q4 | Seq Scan on `fines` with a date filter | `idx_fines_assessed_date` | Bitmap Index Scan on the date range |
 | Q5 | Parallel Seq Scan on `loans` with an equality filter on date | `idx_loans_loan_date` | Bitmap Index Scan |
 
-## 5. Performance results (fill in with YOUR measurements)
+## 5. Performance results 
 
 Copy the `Execution Time` line from your own `plans_before.txt` and `plans_after.txt`:
 
-| Query | Before (ms) | After (ms) | Plan change | Improvement |
+| Query | Before (ms) | After (ms) | Speed-up | What was applied |
 |---|---|---|---|---|
-| Q1 | | | Seq Scan to Index Scan | |
-| Q2 | | | unchanged | |
-| Q3 (index only) | | | little change | |
-| Q3 (materialised view) | | | full aggregation to 10-row read | |
-| Q4 | | | Seq Scan to Index Scan | |
-| Q5 | | | Seq Scan to Index Scan | |
+| Q1 | 456.142 | 3.398 | about 134x | Index |
+| Q2 | 4.204 | 3.849 | about 1.1x (no real change) | None (already covered by existing index) |
+| Q3 (index only) | 253.758 | 225.992 | about 1.1x | Index |
+| Q3 (materialised view) | 253.758 | about 0.42 | about 600x | Materialised view |
+| Q4 | 18.227 | 4.698 | about 3.9x | Index |
+| Q5 | 306.621 | 0.727 | about 420x | Index |
 
-> In the reference run used to test these scripts, Q1, Q4 and Q5 became roughly 10-25 times faster, Q2 was unchanged, Q3 improved only slightly with indexes, and the materialised view made Q3 effectively instant. Your exact numbers will differ with your machine, so **submit your own measurements, not these.**
 
-## 6. Performance analysis (write in your own words, using your numbers)
+## 6. Performance analysis 
+Indexes gave the biggest gains where a query picks out a small number of rows from a large table. Q1 (456 ms to 3.4 ms) and Q5 (306 ms to 0.7 ms) went from a Sequential Scan, which reads every row, to an Index Scan, which goes straight to the matching rows. Q2 did not need a new index, because the partial unique index from Portfolio 1 already covers it, and adding another would only slow inserts and updates and use more space. Q3 aggregates over every loan, so an index cannot skip that work (254 ms to 226 ms). A materialised view fixed it (about 0.4 ms) by storing the finished result, but the trade-off is that the stored result goes stale and needs REFRESH MATERIALIZED VIEW. Overall, indexes cost storage and slow down writes, so they are worth adding only for queries that run often and take a long time on large tables.
 
-Points the analysis should cover:
-
-1. **Why the index helped.** A sequential scan reads every page of the table, while a B-tree index goes straight to matching rows. The gain is largest when the filter is *selective* (Q1 returns about 40 of 200,000 rows; Q5 about 290).
-2. **Why Q2 did not need a new index.** The Portfolio 1 partial unique index already covers `WHERE return_date IS NULL`. Adding another was redundant, and every extra index slows `INSERT`/`UPDATE` and uses space.
-3. **Why Q3 is different.** An aggregate over the whole table must read every loan, so an index cannot skip work. The right tool is precomputation (materialised view). The trade-off is staleness, so it needs `REFRESH MATERIALIZED VIEW`.
-4. **Reading the plan.** Mention `cost`, `actual time`, `rows` estimated versus actual, and `Buffers` (pages read). Run `ANALYZE` after bulk loads so the planner's estimates are accurate.
-5. **Trade-offs.** Indexes speed reads but cost write time and disk space, so index only what the workload needs.
-
-## 7. Technical Reflection (draft, rewrite in your own words)
-
-*Add 3-5 sentences about the most surprising result (for example, Q2 needing no change, or Q3 not benefiting from an index) and what you learned about reading execution plans.*
+## 7. Technical Reflection 
+The big improvement for Q1 (456 ms to 3.4 ms) and Q5 (306 ms to 0.7 ms) came from adding indexes on the columns the queries use. Before indexing, PostgreSQL performed a Sequential Scan, reading through the table to find the records it needed. After indexing, it used an Index Scan to go straight to the matching records without checking the whole table. The indexes made little difference to Q2 and Q3, because an index only helps locate records and does not reduce the other work those queries do on large numbers of rows. The materialised view worked much better for Q3 (about 0.4 ms) because it stores the result in advance, so PostgreSQL does not repeat the same calculation each time. Indexes also have a cost: they take extra storage and slow down inserts, updates and deletes, because the indexes must be maintained as well. I would add an index only to queries that run often and take a long time on large amounts of data, not to queries that are already fast.

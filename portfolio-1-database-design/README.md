@@ -14,7 +14,7 @@ All five portfolios in this repository use this same case study.
 
 ## 2. ER Diagram
 
-```mermaid
+
 erDiagram
     CATEGORIES ||--o{ BOOKS : classifies
     BOOKS ||--o{ BOOK_AUTHORS : "is written by"
@@ -64,8 +64,7 @@ erDiagram
             boolean paid }
 ```
 
-> **Evidence to capture:** open this file on GitHub (it renders the diagram automatically) and take a screenshot, or paste the Mermaid code into https://mermaid.live and export a PNG into this folder as `er-diagram.png`.
-
+> **Evidence to capture:**
 ## 3. Relational Schema
 
 Full DDL is in [`schema.sql`](schema.sql). Summary (PK = primary key, FK = foreign key, UK = unique):
@@ -133,7 +132,7 @@ UNION ALL SELECT 'active loans', count(*) FROM loans WHERE return_date IS NULL
 UNION ALL SELECT 'fines', count(*) FROM fines;
 ```
 
-**Constraint tests** (each should fail with an error; screenshot them):
+**Constraint tests** 
 
 ```sql
 -- 1. due date before loan date
@@ -148,6 +147,6 @@ INSERT INTO loans (copy_id, member_id, staff_id, due_date) VALUES (1, 2, 1, CURR
 DELETE FROM categories WHERE category_id = 1;
 ```
 
-## 7. Technical Reflection (draft, rewrite in your own words)
+## 7. Technical Reflection 
 
-*Add 3-5 sentences here about why you separated books from copies, why the partial unique index is useful, and any difficulty you met. This must reflect your own understanding.*
+The hardest part of the design was deciding how to structure the tables and connect them properly, especially the relationship between books, authors and physical copies. I had to make sure each relationship was correct and that every table had the right primary and foreign keys. The five constraint tests showed me how much constraints matter for preventing bad data: the database rejected an invalid due date, an incorrect loan status and a duplicate ISBN. It also stopped the same copy from being loaned to two people at once, and it refused to delete a category that still had books linked to it. This matters for a library because it needs accurate, reliable records of its books, members and loans. Without these rules the database could hold duplicate books, wrong loan records or conflicting borrowing information, which would cause problems for both librarians and members.
